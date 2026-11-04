@@ -1,0 +1,1128 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SOCIAL DATA HUB – THE DATA JOURNEY</title>
+  <style>
+    @font-face {
+      font-family: 'Space Grotesk';
+      font-style: normal;
+      font-weight: 500;
+      src: url('fonts/spacegrotesk_v22_V8mDoQDjQSkFtoMM3T6r8E7mPbF4C_k3HqU.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Space Grotesk';
+      font-style: normal;
+      font-weight: 700;
+      src: url('fonts/spacegrotesk_v22_V8mDoQDjQSkFtoMM3T6r8E7mPbF4C_k3HqU.woff2') format('woff2');
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #12151e;
+      width: 100%;
+      height: 100%;
+    }
+    #c {
+      display: block;
+      width: 1920px;
+      height: 1080px;
+    }
+  </style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+/**
+ * SOCIAL DATA HUB – THE DATA JOURNEY
+ * 40-Second Continuous Isometric Animation Short Film
+ * Style: 02 - ISOMETRIC
+ */
+const W = 1920, H = 1080;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const DUR = 40.0;
+const FF = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
+
+// --- Math & Easing Helpers ---
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const eOut = x => 1 - Math.pow(1 - clamp(x), 3);
+const eIn = x => { const c = clamp(x); return c * c * c; };
+const eInOut = x => { const c = clamp(x); return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2; };
+const eBack = (x, s = 1.7) => { const c = clamp(x); return 1 + (s + 1) * Math.pow(c - 1, 3) + s * Math.pow(c - 1, 2); };
+
+function off(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+function hexRgb(h) {
+  if (h[0] !== '#') {
+    const m = h.match(/[\d.]+/g);
+    return m ? m.slice(0, 3).map(Number) : [255, 255, 255];
+  }
+  const n = parseInt(h.slice(1), 16);
+  return [n >> 16, (n >> 8) & 255, n & 255];
+}
+
+function mix(a, b, k) {
+  const A = hexRgb(a), B = hexRgb(b);
+  return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * k)).join(',')})`;
+}
+
+const DARK = '#1a1829';
+const sh = (c, k) => mix(c, DARK, k);
+
+// --- Palette ---
+const PAL = {
+  bg: '#141724',
+  floor: '#dfd2c4',
+  floorSlab: '#b8a695',
+  woodPlank: 'rgba(140, 110, 85, 0.15)',
+  wallA: '#557b83',       // Left Wall (Slate teal)
+  wallB: '#39485b',       // Back Wall (Midnight blue-grey)
+  wallTop: '#e2dad0',
+  deskTop: '#f8fafc',
+  deskLeg: '#94a3b8',
+  chair: '#334155',
+  laptop: '#cbd5e1',
+  screenDark: '#0f172a',
+  glowCyan: '#38bdf8',
+  glowTeal: '#2dd4bf',
+  glowAmber: '#fbbf24',
+  glowRose: '#f43f5e',
+  glowGreen: '#10b981',
+  serverBody: '#1e2235',
+  serverDoor: '#0b0f19',
+  serverRack: '#2a3147',
+  cable: '#0ea5e9',
+  cream: '#f8fafc',
+  ink: '#0f172a'
+};
+
+// --- Isometric Camera Math ---
+const CS = 0.8660254; // cos(30 deg)
+let S = 42;
+let OX = 960, OY = 540;
+const CAM = { x: 11, y: 8, z: 2.5 };
+let OT = null;
+
+function P(x, y, z) {
+  if (OT) {
+    x = OT.cx + (x - OT.cx) * (OT.sxy || 1);
+    y = OT.cy + (y - OT.cy) * (OT.sxy || 1);
+    z = OT.zb + (z - OT.zb) * (OT.sz || 1) + (OT.dz || 0);
+  }
+  const rx = x - CAM.x;
+  const ry = y - CAM.y;
+  const rz = z - CAM.z;
+  return [
+    OX + (rx - ry) * CS * S,
+    OY + (rx + ry) * 0.5 * S - rz * S
+  ];
+}
+
+function poly(pts, fill) {
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const q = P(...p);
+    i === 0 ? ctx.moveTo(q[0], q[1]) : ctx.lineTo(q[0], q[1]);
+  });
+  ctx.closePath();
+  ctx.fill();
+}
+
+function box(x0, y0, z0, x1, y1, z1, c, faces = {}) {
+  const top = faces.top || c;
+  const left = faces.left || sh(c, 0.18);
+  const right = faces.right || sh(c, 0.36);
+
+  // +y face (left side from iso view)
+  poly([[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], left);
+  // +x face (right side from iso view)
+  poly([[x1, y0, z1], [x1, y1, z1], [x1, y1, z0], [x1, y0, z0]], right);
+  // +z face (top)
+  poly([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], top);
+
+  if (!faces.noEdge) {
+    const a = P(x0, y1, z1), b = P(x1, y1, z1), d = P(x1, y0, z1);
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = Math.max(1, S * 0.025);
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.lineTo(b[0], b[1]);
+    ctx.lineTo(d[0], d[1]);
+    ctx.stroke();
+  }
+}
+
+function cyl(cx, cy, z0, z1, r, c) {
+  const rx = r * S * 1.2247;
+  const ry = r * S * 0.7071;
+  const b = P(cx, cy, z0), tp = P(cx, cy, z1);
+  const g = ctx.createLinearGradient(b[0] - rx, 0, b[0] + rx, 0);
+  g.addColorStop(0, sh(c, 0.12));
+  g.addColorStop(1, sh(c, 0.42));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(tp[0] - rx, tp[1]);
+  ctx.lineTo(b[0] - rx, b[1]);
+  ctx.ellipse(b[0], b[1], rx, ry, 0, Math.PI, 0, true);
+  ctx.lineTo(tp[0] + rx, tp[1]);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = c;
+  ctx.beginPath();
+  ctx.ellipse(tp[0], tp[1], rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function sphere(x, y, z, r, c) {
+  const p = P(x, y, z);
+  const R = r * S * 1.2247;
+  ctx.fillStyle = c;
+  ctx.beginPath();
+  ctx.arc(p[0], p[1], R, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(p[0], p[1], R, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = sh(c, 0.28);
+  ctx.beginPath();
+  ctx.rect(p[0] - R, p[1] - R, 2 * R, 2 * R);
+  ctx.moveTo(p[0] - R * 0.25 + R * 1.05, p[1] - R * 0.3);
+  ctx.arc(p[0] - R * 0.25, p[1] - R * 0.3, R * 1.05, 0, Math.PI * 2, true);
+  ctx.fill('evenodd');
+  ctx.restore();
+}
+
+function onFace(o, u, v, fn) {
+  const p0 = P(...o);
+  const pu = P(o[0] + u[0], o[1] + u[1], o[2] + u[2]);
+  const pv = P(o[0] + v[0], o[1] + v[1], o[2] + v[2]);
+  ctx.save();
+  ctx.transform((pu[0] - p0[0]) / 100, (pu[1] - p0[1]) / 100, (pv[0] - p0[0]) / 100, (pv[1] - p0[1]) / 100, p0[0], p0[1]);
+  fn();
+  ctx.restore();
+}
+
+function shadow(x0, y0, x1, y1, h, z = 0, a = 0.16) {
+  const L = h * 0.42;
+  poly([
+    [x0 + 0.1, y0 + 0.15, z],
+    [x1 + 0.1, y0 + 0.15, z],
+    [x1 + L, y0 + 0.15 + L * 0.35, z],
+    [x1 + L, y1 + 0.15 + L * 0.35, z],
+    [x0 + L, y1 + 0.15 + L * 0.35, z],
+    [x0 + 0.1, y1 + 0.15, z]
+  ], `rgba(18, 14, 28, ${a})`);
+}
+
+// --- Pre-rendered Background ---
+let BG;
+function buildBG() {
+  BG = off(W, H);
+  const g = BG.getContext('2d');
+  g.fillStyle = PAL.bg;
+  g.fillRect(0, 0, W, H);
+  const rad = g.createRadialGradient(960, 480, 100, 960, 540, 1200);
+  rad.addColorStop(0, '#1e2438');
+  rad.addColorStop(1, '#0c0f17');
+  g.fillStyle = rad;
+  g.fillRect(0, 0, W, H);
+}
+
+// --- Office Architecture ---
+function drawOfficeBase(t) {
+  // Main Room Floor Slab (22 x 16 units)
+  box(-0.4, -0.4, -0.9, 22.4, 16.4, 0, PAL.floor, {
+    left: sh(PAL.floorSlab, 0.1),
+    right: sh(PAL.floorSlab, 0.3)
+  });
+
+  // Wood parquet floor tiles
+  ctx.save();
+  ctx.strokeStyle = PAL.woodPlank;
+  ctx.lineWidth = Math.max(1, S * 0.035);
+  for (let y = 1.6; y < 16.4; y += 1.6) {
+    const a = P(-0.4, y, 0), b = P(22.4, y, 0);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+  }
+  for (let x = 1.6; x < 22.4; x += 3.2) {
+    for (let y = 0; y < 16; y += 1.6) {
+      const a = P(x + ((y / 1.6) % 2) * 1.6, y, 0);
+      const b = P(x + ((y / 1.6) % 2) * 1.6, y + 1.6, 0);
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // Glass/Illuminated Conduit Floor Track for Data Bus
+  poly([
+    [12.8, 1.8, 0.02], [20.6, 1.8, 0.02],
+    [20.6, 14.6, 0.02], [12.8, 14.6, 0.02]
+  ], 'rgba(14, 165, 233, 0.06)');
+
+  // Data Rails lines
+  ctx.save();
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+  ctx.lineWidth = S * 0.04;
+  const r1 = P(14, 2, 0.03), r2 = P(14, 14, 0.03);
+  ctx.beginPath(); ctx.moveTo(r1[0], r1[1]); ctx.lineTo(r2[0], r2[1]); ctx.stroke();
+  const r3 = P(17.5, 2, 0.03), r4 = P(17.5, 14, 0.03);
+  ctx.beginPath(); ctx.moveTo(r3[0], r3[1]); ctx.lineTo(r4[0], r4[1]); ctx.stroke();
+  ctx.restore();
+
+  // Left Wall (Wall A along X = 0)
+  box(-0.4, -0.4, 0, 0, 16.4, 7.8, PAL.wallA, {
+    right: PAL.wallA, left: sh(PAL.wallA, 0.3), top: PAL.wallTop
+  });
+
+  // Back Wall (Wall B along Y = 0)
+  box(0, -0.4, 0, 22.4, 0, 7.8, PAL.wallB, {
+    left: PAL.wallB, right: sh(PAL.wallB, 0.35), top: PAL.wallTop
+  });
+
+  // Skirting boards
+  poly([[0.01, 0, 0], [0.01, 16.4, 0], [0.01, 16.4, 0.38], [0.01, 0, 0.38]], sh(PAL.wallA, 0.15));
+  poly([[0, 0.01, 0], [22.4, 0.01, 0], [22.4, 0.01, 0.38], [0, 0.01, 0.38]], sh(PAL.wallB, 0.15));
+
+  // Panoramic City Window on Left Wall
+  onFace([0.02, 11.8, 7.0], [0, -1, 0], [0, 0, -1], () => {
+    ctx.fillStyle = '#f1f5f9';
+    ctx.beginPath(); ctx.roundRect(-20, -20, 520, 320, 20); ctx.fill();
+    // Sky gradient
+    const sky = ctx.createLinearGradient(0, 0, 0, 280);
+    sky.addColorStop(0, '#0284c7');
+    sky.addColorStop(1, '#bae6fd');
+    ctx.fillStyle = sky;
+    ctx.beginPath(); ctx.roundRect(0, 0, 480, 280, 10); ctx.fill();
+
+    // Isometric distant skyline buildings
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(0, 0, 480, 280, 10); ctx.clip();
+    const bldCols = ['#64748b', '#475569', '#334155', '#94a3b8'];
+    for (let i = 0; i < 9; i++) {
+      const bx = i * 55 - 10;
+      const bh = 100 + ((i * 47) % 110);
+      ctx.fillStyle = bldCols[i % bldCols.length];
+      ctx.fillRect(bx, 280 - bh, 48, bh);
+      // windows
+      ctx.fillStyle = '#fef08a';
+      for (let wy = 280 - bh + 15; wy < 270; wy += 20) {
+        ctx.fillRect(bx + 8, wy, 8, 10);
+        ctx.fillRect(bx + 26, wy, 8, 10);
+      }
+    }
+    // Sun
+    ctx.fillStyle = '#fef08a';
+    ctx.beginPath(); ctx.arc(400, 70, 36, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Window frame bars
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(235, 0, 10, 280);
+    ctx.fillRect(0, 135, 480, 10);
+  });
+}
+
+// --- Character Drawing Engine ---
+function drawCharacter(x, y, z, facing, options = {}) {
+  // Chair base & seat
+  shadow(x - 0.7, y - 0.7, x + 0.7, y + 0.7, 1.8, z, 0.14);
+  cyl(x, y, z, z + 0.3, 0.5, '#475569');
+  cyl(x, y, z + 0.3, z + 1.2, 0.12, '#94a3b8');
+  // Chair cushion
+  box(x - 0.65, y - 0.65, z + 1.2, x + 0.65, y + 0.65, z + 1.45, PAL.chair);
+  // Chair back
+  if (facing === 'down' || facing === 'right') {
+    box(x - 0.65, y + 0.45, z + 1.45, x + 0.65, y + 0.65, z + 3.2, sh(PAL.chair, 0.15));
+  } else {
+    box(x - 0.65, y - 0.65, z + 1.45, x - 0.45, y + 0.65, z + 3.2, sh(PAL.chair, 0.15));
+  }
+
+  // Torso & Clothing
+  const clothCol = options.cloth || '#1e293b';
+  const pantsCol = options.pants || '#334155';
+  const skinCol = '#fcd34d';
+  const hairCol = options.hairCol || '#1e293b';
+
+  // Seated thighs
+  box(x - 0.45, y - 0.5, z + 1.45, x + 0.45, y + 0.1, z + 1.9, pantsCol, { noEdge: true });
+
+  // Body Torso
+  const breath = Math.sin((options.t || 0) * 3 + x) * 0.04;
+  box(x - 0.42, y - 0.38, z + 1.9, x + 0.42, y + 0.38, z + 3.3 + breath, clothCol);
+
+  // Collar / tie detail
+  if (options.tie) {
+    poly([
+      [x, y - 0.39, z + 3.15 + breath],
+      [x + 0.1, y - 0.39, z + 2.5 + breath],
+      [x, y - 0.39, z + 2.3 + breath],
+      [x - 0.1, y - 0.39, z + 2.5 + breath]
+    ], options.tie);
+  }
+
+  // Arms typing or gesturing
+  const armSwing = Math.sin((options.t || 0) * 6 + y) * 0.08;
+  if (options.action === 'celebrate') {
+    // Both arms up in the air
+    box(x - 0.65, y - 0.2, z + 3.0, x - 0.45, y + 0.1, z + 4.2, clothCol, { noEdge: true });
+    box(x + 0.45, y - 0.2, z + 3.0, x + 0.65, y + 0.1, z + 4.2, clothCol, { noEdge: true });
+    sphere(x - 0.55, y - 0.05, z + 4.3, 0.12, skinCol);
+    sphere(x + 0.55, y - 0.05, z + 4.3, 0.12, skinCol);
+  } else if (options.action === 'tablet') {
+    // Holding tablet
+    box(x - 0.55, y - 0.4, z + 2.4, x - 0.35, y - 0.1, z + 2.9, clothCol, { noEdge: true });
+    box(x + 0.35, y - 0.4, z + 2.4, x + 0.55, y - 0.1, z + 2.9, clothCol, { noEdge: true });
+    // Tablet in hand
+    box(x - 0.4, y - 0.7, z + 2.7, x + 0.4, y - 0.62, z + 3.2, '#0f172a');
+    poly([[x - 0.36, y - 0.71, z + 2.74], [x + 0.36, y - 0.71, z + 2.74], [x + 0.36, y - 0.71, z + 3.16], [x - 0.36, y - 0.71, z + 3.16]], '#10b981');
+  } else {
+    // Normal typing on keyboard
+    box(x - 0.58, y - 0.3, z + 2.4, x - 0.42, y + 0.1, z + 3.0, clothCol, { noEdge: true });
+    box(x + 0.42, y - 0.3, z + 2.4, x + 0.58, y + 0.1, z + 3.0, clothCol, { noEdge: true });
+    // Forearms forward to desk
+    box(x - 0.52, y - 0.8 + armSwing, z + 2.4, x - 0.38, y - 0.3, z + 2.6, clothCol, { noEdge: true });
+    box(x + 0.38, y - 0.8 - armSwing, z + 2.4, x + 0.52, y - 0.3, z + 2.6, clothCol, { noEdge: true });
+    // Hands
+    sphere(x - 0.45, y - 0.85 + armSwing, z + 2.48, 0.11, skinCol);
+    sphere(x + 0.45, y - 0.85 - armSwing, z + 2.48, 0.11, skinCol);
+  }
+
+  // Head Neck & Head
+  cyl(x, y, z + 3.3 + breath, z + 3.55 + breath, 0.16, skinCol);
+  sphere(x, y, z + 3.95 + breath, 0.42, skinCol);
+
+  // Hair Styling
+  if (options.hairStyle === 'ponytail') {
+    sphere(x, y + 0.05, z + 4.15 + breath, 0.44, hairCol);
+    cyl(x, y + 0.4, z + 3.6 + breath, z + 4.2 + breath, 0.18, hairCol);
+  } else if (options.hairStyle === 'curly') {
+    sphere(x, y, z + 4.2 + breath, 0.48, hairCol);
+    sphere(x - 0.2, y + 0.1, z + 4.25 + breath, 0.28, hairCol);
+    sphere(x + 0.2, y + 0.1, z + 4.25 + breath, 0.28, hairCol);
+  } else if (options.hairStyle === 'hoodie') {
+    sphere(x, y + 0.05, z + 4.05 + breath, 0.48, clothCol);
+    sphere(x, y, z + 3.95 + breath, 0.41, skinCol);
+  } else {
+    // Classic slick/side part
+    sphere(x, y + 0.02, z + 4.12 + breath, 0.44, hairCol);
+    box(x - 0.4, y - 0.1, z + 4.1 + breath, x + 0.4, y + 0.35, z + 4.35 + breath, hairCol, { noEdge: true });
+  }
+
+  // Glasses (for Analyst Elena)
+  if (options.glasses) {
+    onFace([x - 0.35, y - 0.42, z + 4.05 + breath], [1, 0, 0], [0, 0, -1], () => {
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(5, 0, 26, 18);
+      ctx.strokeRect(38, 0, 26, 18);
+      ctx.beginPath(); ctx.moveTo(31, 8); ctx.lineTo(38, 8); ctx.stroke();
+    });
+  }
+
+  // Role tag floating above head (if highlighted)
+  if (options.highlight && options.role) {
+    const pHead = P(x, y, z + 4.9);
+    ctx.save();
+    ctx.font = `700 20px ${FF}`;
+    const txt = options.role;
+    const tw = ctx.measureText(txt).width + 24;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.beginPath(); ctx.roundRect(pHead[0] - tw / 2, pHead[1] - 26, tw, 34, 17); ctx.fill();
+    ctx.strokeStyle = options.glowCol || PAL.glowCyan;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(txt, pHead[0], pHead[1] - 8);
+    ctx.restore();
+  }
+}
+
+// --- Workstation Desk & Monitor Module ---
+function drawDeskStation(dx, dy, rot = 0, screenData = {}) {
+  // Desk Table (Wood & White Surface)
+  shadow(dx - 1.8, dy - 1.0, dx + 1.8, dy + 1.0, 2.7, 0, 0.15);
+  // 4 Metal Legs
+  for (const [lx, ly] of [[dx - 1.6, dy - 0.8], [dx + 1.6, dy - 0.8], [dx - 1.6, dy + 0.8], [dx + 1.6, dy + 0.8]]) {
+    box(lx, ly, 0, lx + 0.16, ly + 0.16, 2.65, PAL.deskLeg, { noEdge: true });
+  }
+  // Table Top
+  box(dx - 1.8, dy - 1.0, 2.65, dx + 1.8, dy + 1.0, 2.9, PAL.deskTop);
+
+  // Ultra-wide Dual Monitors on Arm
+  const monX = dx, monY = dy - 0.65;
+  cyl(monX, monY, 2.9, 3.8, 0.1, '#64748b'); // Monitor pole
+  // Dual Screen frames
+  box(monX - 1.45, monY - 0.08, 3.4, monX + 1.45, monY + 0.08, 5.0, '#1e293b');
+  // Glowing Display Panel
+  poly([
+    [monX - 1.38, monY + 0.09, 3.48],
+    [monX + 1.38, monY + 0.09, 3.48],
+    [monX + 1.38, monY + 0.09, 4.92],
+    [monX - 1.38, monY + 0.09, 4.92]
+  ], screenData.bg || '#090d16');
+
+  // Mechanical Keyboard & Mouse
+  box(dx - 0.7, dy - 0.2, 2.91, dx + 0.4, dy + 0.25, 3.0, '#334155', { noEdge: true });
+  box(dx + 0.55, dy - 0.1, 2.91, dx + 0.8, dy + 0.18, 2.98, '#475569', { noEdge: true });
+
+  // Coffee Mug
+  cyl(dx - 1.2, dy - 0.1, 2.91, 3.25, 0.15, screenData.mugCol || '#f97316');
+
+  // Monitor Content Painting
+  if (screenData.render) {
+    onFace([monX - 1.38, monY + 0.1, 4.92], [1, 0, 0], [0, 0, -1], () => {
+      screenData.render(ctx);
+    });
+  }
+}
+
+// --- Server Cluster Rack ---
+function drawServerCluster(sx, sy, t) {
+  for (let k = 0; k < 3; k++) {
+    const rx = sx + k * 1.5;
+    const ry = sy;
+    shadow(rx - 0.6, ry - 0.7, rx + 0.6, ry + 0.7, 5.5, 0, 0.18);
+    // Server Chassis Cabinet
+    box(rx - 0.6, ry - 0.7, 0, rx + 0.6, ry + 0.7, 5.8, PAL.serverBody, {
+      left: PAL.serverRack, right: sh(PAL.serverRack, 0.3)
+    });
+    // Front Glass Door with Blinking Blades
+    poly([
+      [rx - 0.55, ry + 0.71, 0.3], [rx + 0.55, ry + 0.71, 0.3],
+      [rx + 0.55, ry + 0.71, 5.5], [rx - 0.55, ry + 0.71, 5.5]
+    ], 'rgba(15, 23, 42, 0.92)');
+
+    // Blade units & flashing activity LEDs
+    onFace([rx - 0.52, ry + 0.72, 5.4], [1, 0, 0], [0, 0, -1], () => {
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, 104, 510);
+      for (let b = 0; b < 12; b++) {
+        const by = b * 42 + 6;
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(4, by, 96, 36);
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(8, by + 4, 40, 28);
+        // Status LED
+        const blink = Math.sin(t * 12 + b * 2 + k * 4) > 0;
+        ctx.fillStyle = blink ? PAL.glowCyan : PAL.glowGreen;
+        ctx.beginPath(); ctx.arc(60, by + 18, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = Math.sin(t * 18 + b) > 0 ? PAL.glowAmber : '#475569';
+        ctx.beginPath(); ctx.arc(76, by + 18, 4, 0, Math.PI * 2); ctx.fill();
+      }
+    });
+
+    // Top exhaust vents
+    cyl(rx, ry, 5.8, 5.95, 0.38, '#0f172a');
+  }
+
+  // Cable Trunk above servers connecting to pipeline
+  poly([
+    [sx - 0.2, sy, 5.9], [sx + 3.2, sy, 5.9],
+    [sx + 3.2, sy + 4.5, 5.9], [sx - 0.2, sy + 4.5, 5.9]
+  ], 'rgba(14, 165, 233, 0.25)');
+}
+
+// --- Data Journey Hardware Pipeline ---
+function drawDataPipeline(t) {
+  // 1. Job Queue (At X = 14.5, Y = 6.8)
+  const qx = 14.5, qy = 6.8;
+  shadow(qx - 1.2, qy - 1.0, qx + 1.2, qy + 1.0, 3.2, 0, 0.16);
+  box(qx - 1.2, qy - 1.0, 0, qx + 1.2, qy + 1.0, 2.2, '#1e293b');
+  box(qx - 1.0, qy - 0.8, 2.2, qx + 1.0, qy + 0.8, 3.5, '#0ea5e9', {
+    top: '#38bdf8', left: 'rgba(14, 165, 233, 0.5)', right: 'rgba(2, 132, 199, 0.7)'
+  });
+  // Sign banner
+  onFace([qx - 1.0, qy + 1.01, 3.2], [1, 0, 0], [0, 0, -1], () => {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 200, 80);
+    ctx.fillStyle = PAL.glowCyan;
+    ctx.font = `700 24px ${FF}`;
+    ctx.fillText('01 · JOB QUEUE', 14, 34);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `500 18px ${FF}`;
+    const cnt = 1200 + Math.floor(Math.sin(t * 8) * 140);
+    ctx.fillText(`BUFFER: ${cnt} JOBS`, 14, 62);
+  });
+
+  // 2. Distributed Worker Nodes (At X = 18.0, Y = 6.8)
+  const wx = 18.0, wy = 6.8;
+  shadow(wx - 1.4, wy - 1.2, wx + 1.4, wy + 1.2, 3.2, 0, 0.16);
+  box(wx - 1.4, wy - 1.2, 0, wx + 1.4, wy + 1.2, 1.8, '#1e293b');
+  // 4 Micro Computing Pods
+  for (let pi = 0; pi < 2; pi++) {
+    for (let pj = 0; pj < 2; pj++) {
+      const px = wx - 0.6 + pi * 1.2;
+      const py = wy - 0.5 + pj * 1.0;
+      const spin = (t * 4 + pi + pj) % (Math.PI * 2);
+      box(px - 0.35, py - 0.35, 1.8, px + 0.35, py + 0.35, 3.0, '#475569');
+      // Glowing processing halo
+      sphere(px, py, 3.25, 0.22, (pi + pj) % 2 === 0 ? PAL.glowCyan : PAL.glowTeal);
+    }
+  }
+  onFace([wx - 1.2, wy + 1.21, 2.8], [1, 0, 0], [0, 0, -1], () => {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 240, 80);
+    ctx.fillStyle = PAL.glowTeal;
+    ctx.font = `700 24px ${FF}`;
+    ctx.fillText('02 · WORKERS', 14, 34);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `500 18px ${FF}`;
+    ctx.fillText('4 NODES · PARSING', 14, 62);
+  });
+
+  // 3. Normalizer & Data Cleaner Laser Chamber (At X = 18.0, Y = 11.2)
+  const nx = 18.0, ny = 11.2;
+  shadow(nx - 1.4, ny - 1.2, nx + 1.4, ny + 1.2, 3.8, 0, 0.16);
+  box(nx - 1.4, ny - 1.2, 0, nx + 1.4, ny + 1.2, 1.6, '#1e293b');
+  // Glass Laser Chamber Cylinder
+  cyl(nx, ny, 1.6, 4.4, 0.95, 'rgba(45, 212, 191, 0.35)');
+  // Laser rings sweeping up and down
+  const lz = 2.0 + Math.abs(Math.sin(t * 5)) * 2.0;
+  cyl(nx, ny, lz - 0.08, lz + 0.08, 0.98, PAL.glowGreen);
+  onFace([nx - 1.2, ny + 1.21, 3.4], [1, 0, 0], [0, 0, -1], () => {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 240, 80);
+    ctx.fillStyle = PAL.glowGreen;
+    ctx.font = `700 24px ${FF}`;
+    ctx.fillText('03 · NORMALIZER', 14, 34);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `500 18px ${FF}`;
+    ctx.fillText('CLEANING & SCHEMA', 14, 62);
+  });
+
+  // 4. MySQL Database Storage Cluster (At X = 14.5, Y = 11.2)
+  const mx = 14.5, my = 11.2;
+  shadow(mx - 1.4, my - 1.2, mx + 1.4, my + 1.2, 4.2, 0, 0.18);
+  box(mx - 1.4, my - 1.2, 0, mx + 1.4, my + 1.2, 1.5, '#1e293b');
+  // 3 Database Storage Cylinders (Master + Replicas)
+  for (let ci = 0; ci < 3; ci++) {
+    const cx = mx - 0.7 + ci * 0.7;
+    const cy = my;
+    cyl(cx, cy, 1.5, 4.2, 0.38, '#0284c7');
+    // Tiered disc rings
+    for (const dz of [2.2, 2.9, 3.6]) {
+      cyl(cx, cy, dz, dz + 0.12, 0.42, '#38bdf8');
+    }
+  }
+  onFace([mx - 1.2, my + 1.21, 3.6], [1, 0, 0], [0, 0, -1], () => {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 240, 80);
+    ctx.fillStyle = PAL.glowCyan;
+    ctx.font = `700 24px ${FF}`;
+    ctx.fillText('04 · MYSQL CLUSTER', 14, 34);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `500 18px ${FF}`;
+    ctx.fillText('INDEXED & COMMITTED', 14, 62);
+  });
+}
+
+// --- Animated Flowing Data Packets ---
+function drawAnimatedPackets(t) {
+  // Track loop: (14, 3.5) [Server] -> (14.5, 6.8) [Queue] -> (18, 6.8) [Workers] -> (18, 11.2) [Normalizer] -> (14.5, 11.2) [MySQL] -> (13, 1) [Wall Screen]
+  const pts = [
+    { x: 14.5, y: 3.5, z: 2.8 },
+    { x: 14.5, y: 6.8, z: 3.6 },
+    { x: 18.0, y: 6.8, z: 3.6 },
+    { x: 18.0, y: 11.2, z: 3.6 },
+    { x: 14.5, y: 11.2, z: 4.4 },
+    { x: 13.0, y: 3.5, z: 4.8 }
+  ];
+
+  const packetCount = 14;
+  for (let i = 0; i < packetCount; i++) {
+    const speed = 0.22;
+    const offset = (t * speed + i / packetCount) % 1;
+    const segIdx = Math.floor(offset * (pts.length - 1));
+    const subT = (offset * (pts.length - 1)) % 1;
+    const pA = pts[segIdx];
+    const pB = pts[segIdx + 1] || pts[pts.length - 1];
+
+    const curX = lerp(pA.x, pB.x, subT);
+    const curY = lerp(pA.y, pB.y, subT);
+    const curZ = lerp(pA.z, pB.z, subT) + Math.sin(t * 10 + i) * 0.12;
+
+    // Packet type: YouTube (red) or Web (cyan) or Cleaned (emerald)
+    let col = i % 2 === 0 ? PAL.glowRose : PAL.glowCyan;
+    if (segIdx >= 3) col = PAL.glowGreen; // after normalizer
+
+    // Glowing 3D Data Cube
+    const s = 0.28;
+    box(curX - s, curY - s, curZ - s, curX + s, curY + s, curZ + s, col, { noEdge: true });
+
+    // Little icon glow on screen
+    const pScr = P(curX, curY, curZ);
+    ctx.save();
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(pScr[0], pScr[1], 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// --- Central Wall Screen (Wall B) ---
+function drawCentralWallScreen(t) {
+  // Screen on Wall B (from X = 8 to 18, Z = 2.8 to 7.4, Y = 0.05)
+  const sx0 = 8.0, sx1 = 18.0;
+  const sz0 = 2.6, sz1 = 7.4;
+  const sy = 0.03;
+
+  // Bezel Frame
+  box(sx0 - 0.2, sy - 0.15, sz0 - 0.2, sx1 + 0.2, sy, sz1 + 0.2, '#0f172a');
+
+  // Screen Face
+  poly([
+    [sx0, sy + 0.01, sz0], [sx1, sy + 0.01, sz0],
+    [sx1, sy + 0.01, sz1], [sx0, sy + 0.01, sz1]
+  ], '#050811');
+
+  // Screen Graphics
+  onFace([sx0, sy + 0.02, sz1], [1, 0, 0], [0, 0, -1], () => {
+    // Canvas coordinate space: 100 px per unit. Width = (18 - 8) * 100 = 1000px, Height = 480px
+    const W_scr = 1000, H_scr = 480;
+
+    // Header bar
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, W_scr, 70);
+
+    ctx.fillStyle = PAL.glowCyan;
+    ctx.font = `700 32px ${FF}`;
+    ctx.fillText('SOCIAL DATA HUB', 24, 46);
+
+    ctx.fillStyle = PAL.glowGreen;
+    ctx.beginPath(); ctx.arc(360, 40, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `500 20px ${FF}`;
+    ctx.fillText('LIVE STREAMING · CRAWLER ACTIVE', 380, 46);
+
+    // Right clock / timestamp
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = `700 22px ${FF}`;
+    ctx.fillText('LATENCY: 12ms | 30 FPS', 720, 46);
+
+    // Left Panel: Real-time Line Graph
+    ctx.fillStyle = '#0b1120';
+    ctx.roundRect(24, 90, 580, 240, 12);
+    ctx.fill();
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `700 18px ${FF}`;
+    ctx.fillText('CAMPAIGN: AI TECHNOLOGY (YOUTUBE & PUBLIC WEB)', 40, 122);
+
+    // Graph grid lines
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    for (let gy = 150; gy <= 290; gy += 45) {
+      ctx.beginPath(); ctx.moveTo(40, gy); ctx.lineTo(580, gy); ctx.stroke();
+    }
+
+    // Graph Line
+    ctx.strokeStyle = PAL.glowCyan;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    for (let gx = 0; gx < 520; gx += 20) {
+      const gval = Math.sin((gx + t * 40) * 0.03) * 40 + Math.cos(gx * 0.08) * 20 + 220;
+      gx === 0 ? ctx.moveTo(50 + gx, gval) : ctx.lineTo(50 + gx, gval);
+    }
+    ctx.stroke();
+
+    // Right Top Panel: Gauge & KPIs
+    ctx.fillStyle = '#0b1120';
+    ctx.roundRect(620, 90, 356, 110, 12);
+    ctx.fill();
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `500 16px ${FF}`;
+    ctx.fillText('TOTAL RECORDS HARVESTED', 640, 120);
+
+    const count = 1248500 + Math.floor(t * 4520);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = `700 38px ${FF}`;
+    ctx.fillText(count.toLocaleString(), 640, 168);
+
+    // Right Bottom Panel: Sentiment breakdown
+    ctx.fillStyle = '#0b1120';
+    ctx.roundRect(620, 215, 356, 115, 12);
+    ctx.fill();
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `500 16px ${FF}`;
+    ctx.fillText('AI SENTIMENT ANALYSIS', 640, 244);
+
+    // Sentiment Bars
+    ctx.fillStyle = PAL.glowGreen;
+    ctx.fillRect(640, 260, 220, 22);
+    ctx.fillStyle = PAL.glowRose;
+    ctx.fillRect(865, 260, 85, 22);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `700 15px ${FF}`;
+    ctx.fillText('88% POSITIVE', 650, 276);
+    ctx.fillText('12%', 890, 276);
+
+    // Bottom Ticker Bar
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(24, 350, 952, 100);
+
+    ctx.fillStyle = PAL.glowAmber;
+    ctx.font = `700 18px ${FF}`;
+    ctx.fillText('LIVE EVENT FEED:', 40, 385);
+
+    const tickerX = ((t * 60) % 900);
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = `500 18px ${FF}`;
+    ctx.fillText('• YouTube: "State of LLMs 2026" Transcribed • Reddit: 4,200 mentions parsed • ArXiv: 14 papers normalized • MySQL Cluster: 0 errors committed', 220 - tickerX, 385);
+    ctx.fillText('• Crawler Operator: 128 nodes operational • QA Approval: 99.8% Data Fidelity', 1120 - tickerX, 385);
+  });
+}
+
+// --- Cinematic Storyboard Overlay Graphics ---
+function drawStoryOverlays(t) {
+  // Title / Lower Thirds matching continuous story beats
+  const overlayMap = [
+    { t0: 0.5, t1: 4.5, title: 'PHASE 1 · SOCIAL DATA HUB HQ', sub: 'The team opens the command center' },
+    { t0: 5.0, t1: 9.5, title: 'PHASE 2 · CAMPAIGN CREATION', sub: 'Data Analyst targets AI Technology on YouTube & Web' },
+    { t0: 10.0, t1: 15.0, title: 'PHASE 3 · CRAWLER ACTIVATION', sub: 'Operator launches 128 distributed spider nodes' },
+    { t0: 15.5, t1: 25.0, title: 'PHASE 4 · THE DATA JOURNEY', sub: 'Queue → Workers → Normalizer → MySQL Cluster' },
+    { t0: 25.5, t1: 31.0, title: 'PHASE 5 · QA AUDIT & APPROVAL', sub: 'QA Engineer verifies data integrity (99.8% accuracy)' },
+    { t0: 31.5, t1: 36.0, title: 'PHASE 6 · CENTRAL DASHBOARD', sub: 'Live analytics stream to the central command wall' },
+    { t0: 36.2, t1: 40.0, title: 'SOCIAL DATA HUB', sub: 'THE DATA JOURNEY · 40s CONTINUOUS FILM' }
+  ];
+
+  const item = overlayMap.find(o => t >= o.t0 && t <= o.t1);
+  if (item && t < 36.2) {
+    const fadeIn = eOut(seg(t, item.t0, item.t0 + 0.5));
+    const fadeOut = 1 - eIn(seg(t, item.t1 - 0.4, item.t1));
+    const alpha = fadeIn * fadeOut;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(80, 940);
+
+    // Backdrop Pill
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, 680, 90, 16);
+    ctx.fill();
+
+    ctx.strokeStyle = PAL.glowCyan;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Accent Tag Bar
+    ctx.fillStyle = PAL.glowCyan;
+    ctx.fillRect(20, 20, 6, 50);
+
+    // Text
+    ctx.fillStyle = PAL.glowCyan;
+    ctx.font = `700 22px ${FF}`;
+    ctx.fillText(item.title, 42, 42);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = `500 18px ${FF}`;
+    ctx.fillText(item.sub, 42, 70);
+
+    ctx.restore();
+  }
+
+  // Grand Finale Title Card (t: 36.2 -> 40.0)
+  if (t >= 36.0) {
+    const pIntro = eBack(seg(t, 36.2, 38.0), 1.4);
+    const pOut = 1 - seg(t, 39.5, 40.0);
+    const a = pIntro * pOut;
+
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.translate(960, 220 + (1 - pIntro) * 50);
+
+    // Grand Title Backdrop
+    ctx.fillStyle = 'rgba(11, 15, 25, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect(-420, -110, 840, 220, 24);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Glow line
+    ctx.shadowColor = PAL.glowCyan;
+    ctx.shadowBlur = 30;
+
+    // Main Logo Title
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `700 68px ${FF}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SOCIAL DATA HUB', 0, -28);
+
+    // Subtitle
+    ctx.fillStyle = PAL.glowCyan;
+    ctx.font = `700 28px ${FF}`;
+    ctx.letterSpacing = '6px';
+    ctx.fillText('THE DATA JOURNEY', 0, 36);
+
+    // Tech badges
+    ctx.font = `500 16px ${FF}`;
+    ctx.fillStyle = '#94a3b8';
+    ctx.letterSpacing = '2px';
+    ctx.fillText('ISOMETRIC ARCHITECTURE · CONTINUOUS 40S DIRECTED FILM', 0, 72);
+
+    ctx.restore();
+  }
+
+  // Smooth cinematic fade-in at 0s and fade-out at 40s
+  const fade = Math.max(1 - seg(t, 0, 0.6), seg(t, 39.6, 40.0));
+  if (fade > 0) {
+    ctx.save();
+    ctx.globalAlpha = fade;
+    ctx.fillStyle = '#0b0f19';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+}
+
+// --- Main Frame Render Function ---
+function frame(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.drawImage(BG, 0, 0);
+
+  // === Continuous Camera Path Interpolation (40 Seconds) ===
+  // Spline points through key focal positions:
+  // t=0..4.5: Overview -> Alex (Station 1) [CAM: 11,8 -> 6,7]
+  // t=4.5..9.5: Elena (Station 2) [CAM: 9,7]
+  // t=9.5..15: Marcus & Servers (Station 3 & Rack) [CAM: 6,11 -> 14,4]
+  // t=15..25: Follow Pipeline [CAM: 14,7 -> 18,7 -> 18,11 -> 14,11]
+  // t=25..31: Maya (Station 4) [CAM: 9.5, 11]
+  // t=31..36: Central Screen [CAM: 13, 3, 5]
+  // t=36..40: Grand Pull-back [CAM: 11, 8, 3]
+
+  let targetCamX = 11, targetCamY = 8, targetCamZ = 2.5, targetS = 30;
+
+  if (t < 4.5) {
+    const p = eInOut(seg(t, 0.5, 4.0));
+    targetCamX = lerp(11, 5.8, p);
+    targetCamY = lerp(8, 7.2, p);
+    targetCamZ = lerp(2.5, 3.2, p);
+    targetS = lerp(28, 44, p);
+  } else if (t < 9.5) {
+    const p = eInOut(seg(t, 4.5, 6.0));
+    targetCamX = lerp(5.8, 9.2, p);
+    targetCamY = lerp(7.2, 7.2, p);
+    targetCamZ = 3.2;
+    targetS = 44;
+  } else if (t < 15.0) {
+    const p1 = eInOut(seg(t, 9.5, 11.5));
+    const p2 = eInOut(seg(t, 11.5, 14.5));
+    targetCamX = lerp(lerp(9.2, 5.8, p1), 14.0, p2);
+    targetCamY = lerp(lerp(7.2, 10.8, p1), 4.2, p2);
+    targetCamZ = lerp(3.2, 3.4, p2);
+    targetS = lerp(44, 40, p2);
+  } else if (t < 25.0) {
+    // 4 Steps in Pipeline
+    const pStep = (t - 15.0) / 10.0; // 0 to 1
+    if (pStep < 0.25) {
+      // Queue
+      targetCamX = 14.5; targetCamY = 6.8; targetCamZ = 3.4; targetS = 42;
+    } else if (pStep < 0.5) {
+      // Workers
+      const p = eInOut((pStep - 0.25) / 0.25);
+      targetCamX = lerp(14.5, 18.0, p); targetCamY = 6.8; targetCamZ = 3.4; targetS = 42;
+    } else if (pStep < 0.75) {
+      // Normalizer
+      const p = eInOut((pStep - 0.5) / 0.25);
+      targetCamX = 18.0; targetCamY = lerp(6.8, 11.2, p); targetCamZ = 3.4; targetS = 42;
+    } else {
+      // MySQL
+      const p = eInOut((pStep - 0.75) / 0.25);
+      targetCamX = lerp(18.0, 14.5, p); targetCamY = 11.2; targetCamZ = 3.4; targetS = 42;
+    }
+  } else if (t < 31.0) {
+    // QA Station
+    const p = eInOut(seg(t, 25.0, 26.5));
+    targetCamX = lerp(14.5, 9.2, p);
+    targetCamY = lerp(11.2, 10.8, p);
+    targetCamZ = 3.2;
+    targetS = 44;
+  } else if (t < 36.0) {
+    // Central Wall Screen
+    const p = eInOut(seg(t, 31.0, 32.5));
+    targetCamX = lerp(9.2, 13.0, p);
+    targetCamY = lerp(10.8, 3.2, p);
+    targetCamZ = lerp(3.2, 4.8, p);
+    targetS = lerp(44, 38, p);
+  } else {
+    // Grand Pull-back
+    const p = eInOut(seg(t, 36.0, 38.8));
+    targetCamX = lerp(13.0, 11.0, p);
+    targetCamY = lerp(3.2, 8.0, p);
+    targetCamZ = lerp(4.8, 2.6, p);
+    targetS = lerp(38, 24.5, p);
+  }
+
+  // Apply smooth camera
+  CAM.x = targetCamX;
+  CAM.y = targetCamY;
+  CAM.z = targetCamZ;
+  S = targetS;
+
+  // --- Render Office Elements in Painter's Depth Order ---
+  drawOfficeBase(t);
+  drawCentralWallScreen(t);
+  drawServerCluster(14.0, 2.5, t);
+  drawDataPipeline(t);
+  drawAnimatedPackets(t);
+
+  // --- Station 1: Alex (Team Lead) [X: 5.5, Y: 7.0] ---
+  drawDeskStation(5.5, 6.2, 0, {
+    bg: '#0284c7',
+    mugCol: '#f97316',
+    render: (c) => {
+      c.fillStyle = '#0f172a'; c.fillRect(0, 0, 280, 144);
+      c.fillStyle = PAL.glowCyan; c.font = `700 20px ${FF}`;
+      c.fillText('HUB · OPERATOR', 16, 32);
+      c.fillStyle = t >= 2.0 ? PAL.glowGreen : PAL.glowAmber;
+      c.fillText(t >= 2.0 ? 'SYSTEM READY' : 'LOGGING IN...', 16, 70);
+      c.fillStyle = '#38bdf8'; c.fillRect(16, 95, 240 * clamp(t / 2.5), 10);
+    }
+  });
+  drawCharacter(5.5, 7.4, 0, 'up', {
+    t,
+    cloth: '#1e293b',
+    pants: '#334155',
+    tie: '#0284c7',
+    hairStyle: 'classic',
+    action: t > 32 ? 'celebrate' : 'typing',
+    highlight: t < 4.8,
+    role: 'ALEX · TEAM LEAD',
+    glowCol: PAL.glowCyan
+  });
+
+  // --- Station 2: Elena (Data Analyst) [X: 9.0, Y: 7.0] ---
+  drawDeskStation(9.0, 6.2, 0, {
+    bg: '#0f172a',
+    mugCol: '#ec4899',
+    render: (c) => {
+      c.fillStyle = '#0f172a'; c.fillRect(0, 0, 280, 144);
+      c.fillStyle = PAL.glowRose; c.font = `700 18px ${FF}`;
+      c.fillText('CAMPAIGN BUILDER', 14, 28);
+      // YouTube badge
+      c.fillStyle = '#ef4444'; c.fillRect(14, 42, 110, 30);
+      c.fillStyle = '#ffffff'; c.font = `700 14px ${FF}`; c.fillText('▶ YOUTUBE', 24, 62);
+      // Web badge
+      c.fillStyle = '#0284c7'; c.fillRect(135, 42, 110, 30);
+      c.fillStyle = '#ffffff'; c.fillText('🌐 PUBLIC WEB', 145, 62);
+      // Keywords
+      c.fillStyle = PAL.glowGreen; c.font = `500 15px ${FF}`;
+      c.fillText('KEY: "AI Tech" · DEPLOYED', 14, 105);
+    }
+  });
+  drawCharacter(9.0, 7.4, 0, 'up', {
+    t,
+    cloth: '#0d9488',
+    pants: '#e2e8f0',
+    hairStyle: 'curly',
+    hairCol: '#b45309',
+    glasses: true,
+    action: t > 32 ? 'celebrate' : 'typing',
+    highlight: t >= 4.8 && t < 9.8,
+    role: 'ELENA · DATA ANALYST',
+    glowCol: PAL.glowRose
+  });
+
+  // --- Station 3: Marcus (Crawler Operator) [X: 5.5, Y: 11.2] ---
+  drawDeskStation(5.5, 12.0, Math.PI, {
+    bg: '#0f172a',
+    mugCol: '#eab308',
+    render: (c) => {
+      c.fillStyle = '#0f172a'; c.fillRect(0, 0, 280, 144);
+      c.fillStyle = PAL.glowAmber; c.font = `700 18px ${FF}`;
+      c.fillText('CRAWLER CONSOLE', 14, 28);
+      c.fillStyle = '#22c55e';
+      c.fillText('128 NODES HARVESTING', 14, 65);
+      c.fillStyle = '#94a3b8'; c.font = `500 15px ${FF}`;
+      c.fillText('THROUGHPUT: 10K REQ/S', 14, 105);
+    }
+  });
+  drawCharacter(5.5, 10.8, 0, 'down', {
+    t,
+    cloth: '#ea580c',
+    pants: '#1e293b',
+    hairStyle: 'hoodie',
+    hairCol: '#0f172a',
+    action: t > 32 ? 'celebrate' : 'typing',
+    highlight: t >= 9.8 && t < 15.2,
+    role: 'MARCUS · CRAWLER OPS',
+    glowCol: PAL.glowAmber
+  });
+
+  // --- Station 4: Maya (QA Engineer) [X: 9.0, Y: 11.2] ---
+  drawDeskStation(9.0, 12.0, Math.PI, {
+    bg: '#0f172a',
+    mugCol: '#10b981',
+    render: (c) => {
+      c.fillStyle = '#0f172a'; c.fillRect(0, 0, 280, 144);
+      c.fillStyle = PAL.glowGreen; c.font = `700 18px ${FF}`;
+      c.fillText('QA VERIFICATION', 14, 28);
+      c.fillStyle = '#ffffff'; c.font = `500 16px ${FF}`;
+      c.fillText('ACCURACY: 99.8%', 14, 62);
+      c.fillStyle = PAL.glowGreen; c.font = `700 18px ${FF}`;
+      c.fillText('STATUS: [APPROVED ✓]', 14, 105);
+    }
+  });
+  drawCharacter(9.0, 10.8, 0, 'down', {
+    t,
+    cloth: '#d97706',
+    pants: '#1e293b',
+    hairStyle: 'ponytail',
+    hairCol: '#451a03',
+    action: t >= 25.5 && t <= 31.0 ? 'tablet' : (t > 32 ? 'celebrate' : 'typing'),
+    highlight: t >= 25.0 && t < 31.5,
+    role: 'MAYA · QA ENGINEER',
+    glowCol: PAL.glowGreen
+  });
+
+  // --- Decorative Elements ---
+  // Potted Fiddle Leaf Fig Plants
+  for (const [px, py] of [[1.2, 14.8], [21.0, 14.8], [1.2, 1.2]]) {
+    shadow(px - 0.5, py - 0.5, px + 0.5, py + 0.5, 2.5, 0, 0.12);
+    cyl(px, py, 0, 1.2, 0.45, '#e2e8f0');
+    sphere(px, py, 1.8, 0.65, '#15803d');
+    sphere(px - 0.2, py + 0.1, 2.4, 0.55, '#16a34a');
+    sphere(px + 0.2, py - 0.1, 2.8, 0.45, '#22c55e');
+  }
+
+  // Story Titles & Lower-Third Overlays
+  drawStoryOverlays(t);
+}
+
+// Window API for Playwright headless rendering
+window.draw = function (job) {
+  frame(job.t);
+  return cv.toDataURL('image/jpeg', job.q || 0.94).split(',')[1];
+};
+
+window.ready = document.fonts.ready.then(() => {
+  buildBG();
+  console.log('SOCIAL DATA HUB Engine Ready!');
+});
+</script>
+</body>
+</html>
